@@ -61,6 +61,7 @@ class Project {
   List<int> monthlyDays;
   int dailyLimit; // -1 无上限
   bool reminderOn;
+  int reminderMinutes; // 每天提醒时刻，换算成 0:00 起的分钟数
   List<Metric> metrics;
   List<CheckInRecord> records;
   bool imported;
@@ -76,6 +77,7 @@ class Project {
     List<int>? monthlyDays,
     this.dailyLimit = 1,
     this.reminderOn = false,
+    this.reminderMinutes = 20 * 60,
     List<Metric>? metrics,
     List<CheckInRecord>? records,
     this.imported = false,
@@ -92,7 +94,8 @@ class Project {
       case FrequencyType.daily:
         return true;
       case FrequencyType.interval:
-        return d.difference(start).inDays % intervalDays == 0;
+        final step = intervalDays < 1 ? 1 : intervalDays;
+        return d.difference(start).inDays % step == 0;
       case FrequencyType.weekly:
         return weeklyDays.contains(d.weekday);
       case FrequencyType.monthly:
@@ -139,6 +142,30 @@ class Project {
     return list;
   }
 
+  /// 从 [from] 起未来 [days] 天内需要提醒的时刻。
+  /// 不需要打卡的日子、已经打过卡的日子、以及已经过去的时刻都会被跳过。
+  List<DateTime> upcomingReminderTimes(DateTime from, {int days = 14}) {
+    if (!reminderOn) return [];
+    final base = DateTime(from.year, from.month, from.day);
+    final result = <DateTime>[];
+    for (var i = 0; i < days; i++) {
+      final day = DateTime(base.year, base.month, base.day + i);
+      if (!isRequiredOn(day)) continue;
+      if (isCheckedOn(day)) continue;
+      final at = DateTime(day.year, day.month, day.day, reminderMinutes ~/ 60,
+          reminderMinutes % 60);
+      if (at.isBefore(from)) continue;
+      result.add(at);
+    }
+    return result;
+  }
+
+  String get reminderTimeText {
+    final h = (reminderMinutes ~/ 60).toString().padLeft(2, '0');
+    final m = (reminderMinutes % 60).toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
@@ -150,6 +177,7 @@ class Project {
         'monthlyDays': monthlyDays,
         'dailyLimit': dailyLimit,
         'reminderOn': reminderOn,
+        'reminderMinutes': reminderMinutes,
         'metrics': metrics.map((m) => m.toJson()).toList(),
         'records': records.map((r) => r.toJson()).toList(),
         'imported': imported,
@@ -169,6 +197,7 @@ class Project {
         monthlyDays: List<int>.from(json['monthlyDays'] ?? []),
         dailyLimit: json['dailyLimit'] ?? 1,
         reminderOn: json['reminderOn'] ?? false,
+        reminderMinutes: _parseReminderMinutes(json['reminderMinutes']),
         metrics: (json['metrics'] as List?)
                 ?.map((e) => Metric.fromJson(e))
                 .toList() ??
@@ -179,4 +208,10 @@ class Project {
             [],
         imported: json['imported'] ?? false,
       );
+}
+
+int _parseReminderMinutes(Object? raw) {
+  final v = raw is num ? raw.toInt() : 20 * 60;
+  if (v < 0 || v > 24 * 60 - 1) return 20 * 60;
+  return v;
 }

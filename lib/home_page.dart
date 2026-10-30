@@ -4,11 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'models.dart';
 import 'storage.dart';
+import 'notification_service.dart';
 import 'project_detail_page.dart';
 import 'main.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.initialProjects});
+
+  /// 预览 / 测试用：直接给定初始项目，跳过本地读取
+  final List<Project>? initialProjects;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -28,7 +32,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _load() async {
-    final list = await Storage.loadProjects();
+    final list = widget.initialProjects ?? await Storage.loadProjects();
     setState(() {
       _projects = list;
       _loading = false;
@@ -147,6 +151,10 @@ class _HomePageState extends State<HomePage> {
             : '3');
 
     bool reminder = project?.reminderOn ?? false;
+    TimeOfDay reminderTime = TimeOfDay(
+      hour: (project?.reminderMinutes ?? 20 * 60) ~/ 60,
+      minute: (project?.reminderMinutes ?? 20 * 60) % 60,
+    );
     List<Metric> metrics = project?.metrics
             .map((m) => Metric(id: m.id, name: m.name, unit: m.unit))
             .toList() ??
@@ -380,9 +388,42 @@ class _HomePageState extends State<HomePage> {
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('开启提醒'),
+                    subtitle: Text(
+                      reminder
+                          ? '每天 ${_fmtTime(reminderTime)} 提醒，已打卡的日子自动跳过'
+                          : '到点推送通知，提醒你完成打卡',
+                    ),
                     value: reminder,
-                    onChanged: (v) => setSt(() => reminder = v),
+                    onChanged: (v) async {
+                      setSt(() => reminder = v);
+                      if (!v) return;
+                      final granted =
+                          await NotificationService.requestPermission();
+                      if (!granted && ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(
+                            content: Text('通知权限未开启，提醒不会生效，可以到系统通知设置里手动打开'),
+                          ),
+                        );
+                      }
+                    },
                   ),
+                  if (reminder)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('提醒时间'),
+                      trailing: Text(
+                        _fmtTime(reminderTime),
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                      onTap: () async {
+                        final picked = await showTimePicker(
+                          context: ctx,
+                          initialTime: reminderTime,
+                        );
+                        if (picked != null) setSt(() => reminderTime = picked);
+                      },
+                    ),
                 ],
               ),
             ),
@@ -426,6 +467,7 @@ class _HomePageState extends State<HomePage> {
         project.monthlyDays = monthly;
         project.dailyLimit = finalLimit;
         project.reminderOn = reminder;
+        project.reminderMinutes = reminderTime.hour * 60 + reminderTime.minute;
         project.metrics = metrics;
       });
     } else {
@@ -440,6 +482,7 @@ class _HomePageState extends State<HomePage> {
         monthlyDays: monthly,
         dailyLimit: finalLimit,
         reminderOn: reminder,
+        reminderMinutes: reminderTime.hour * 60 + reminderTime.minute,
         metrics: metrics,
       );
       setState(() => _projects.add(p));
@@ -511,9 +554,9 @@ class _HomePageState extends State<HomePage> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: Image.asset(
-                  'assets/icons/${Storage.presetIcons[i]}',
+                    'assets/icons/${Storage.presetIcons[i]}',
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Center(
+                  errorBuilder: (_, _, _) => const Center(
                     child: Icon(Icons.broken_image, size: 16),
                   ),
                 ),
@@ -548,6 +591,9 @@ class _HomePageState extends State<HomePage> {
   void _showSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
+
+  String _fmtTime(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   /// 长按卡片：在触点位置弹出菜单
   Future<void> _onCardLongPress(Project p, Offset globalPos) async {
@@ -673,6 +719,23 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(height: 20),
                 Row(
                   children: [
+                    const Text('通知提醒',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () => NotificationService.openSettings(),
+                      child: const Text('系统通知设置'),
+                    ),
+                  ],
+                ),
+                const Text(
+                  '在项目里打开「开启提醒」后，到设定时间会推送通知；'
+                  '没收到通知多半是系统把通知权限关掉了，可以点上面的按钮去打开。',
+                  style: TextStyle(fontSize: 12),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
                     const Text('数据目录',
                         style: TextStyle(fontWeight: FontWeight.bold)),
                     const Spacer(),
@@ -725,14 +788,14 @@ class _HomePageState extends State<HomePage> {
       return Image.file(
         File(path),
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
+        errorBuilder: (_, _, _) =>
             Container(color: Colors.teal.shade100),
       );
     }
     return Image.asset(
-      'assets/icons/${p.iconPath}',
+      'assets/icons/${Storage.iconAsset(p.iconPath)}',
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => Container(color: Colors.teal.shade100),
+      errorBuilder: (_, _, _) => Container(color: Colors.teal.shade100),
     );
   }
 
@@ -823,6 +886,12 @@ class _HomePageState extends State<HomePage> {
                           ],
                         ),
                       ),
+                      if (p.reminderOn)
+                        const Padding(
+                          padding: EdgeInsets.only(right: 6),
+                          child: Icon(Icons.alarm,
+                              size: 18, color: Colors.black87),
+                        ),
                       _outlinedText(
                         '${_weeklyDone(p)}/${_weeklyTarget(p)}',
                         fontSize: 18,
@@ -961,9 +1030,8 @@ class _HomePageState extends State<HomePage> {
                   ? ReorderableListView.builder(
                       padding: const EdgeInsets.all(12),
                       itemCount: filtered.length,
-                      onReorder: (oldIndex, newIndex) {
+                      onReorderItem: (oldIndex, newIndex) {
                         setState(() {
-                          if (newIndex > oldIndex) newIndex -= 1;
                           final item = filtered.removeAt(oldIndex);
                           filtered.insert(newIndex, item);
                           _projects = filtered;

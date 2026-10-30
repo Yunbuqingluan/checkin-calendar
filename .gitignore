@@ -48,3 +48,10 @@ app.*.map.json
 .widget_preview/
 android/build/
 android/.gradle/
+# 发布签名（不要提交）
+/android/key.properties
+*.jks
+*.keystore
+
+# 打包产物
+/dist/

@@ -176,7 +176,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                                 width: 70,
                                 height: 70,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
+                                errorBuilder: (_, _, _) => Container(
                                   width: 70,
                                   height: 70,
                                   color: Colors.grey.shade300,
@@ -685,7 +685,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                                                     height: 70,
                                                     fit: BoxFit.cover,
                                                     errorBuilder:
-                                                        (_, __, ___) =>
+                                                        (_, _, _) =>
                                                             Container(
                                                       width: 70,
                                                       height: 70,

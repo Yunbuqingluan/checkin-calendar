@@ -1,4 +1,4 @@
-package com.example.my_calendar_app
+package com.yunluan.checkincalendar
 
 import io.flutter.embedding.android.FlutterActivity
 

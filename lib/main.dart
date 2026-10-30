@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'home_page.dart';
+import 'notification_service.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // 提前初始化通知插件，首帧之后就能拿到权限状态
+  await NotificationService.init();
   runApp(const MyApp());
 }
 

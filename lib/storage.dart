@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models.dart';
+import 'notification_service.dart';
 
 class Storage {
   static const _fileName = 'projects.json';
@@ -85,19 +88,41 @@ class Storage {
   static Future<List<Project>> loadProjects() async {
     try {
       final file = await _getFile();
-      if (!await file.exists()) return [];
-      final list = jsonDecode(await file.readAsString()) as List;
-      return list.map((e) => Project.fromJson(e)).toList();
+      // 主文件读不出来时退回上一份备份，避免一次写坏就丢掉全部数据
+      for (final candidate in [file, File('${file.path}.bak')]) {
+        try {
+          if (!await candidate.exists()) continue;
+          final list = jsonDecode(await candidate.readAsString());
+          if (list is! List) continue;
+          return list
+              .map((e) => Project.fromJson(e as Map<String, dynamic>))
+              .toList();
+        } catch (_) {
+          continue;
+        }
+      }
     } catch (e) {
-      return [];
+      // 数据目录拿不到（比如测试环境或权限异常）时按空数据处理，不能让首页卡在加载中
+      debugPrint('读取数据目录失败：$e');
     }
+    return [];
   }
 
   static Future<void> saveProjects(List<Project> projects) async {
     final file = await _getFile();
-    await file.writeAsString(
-      jsonEncode(projects.map((p) => p.toJson()).toList()),
-    );
+    final content = jsonEncode(projects.map((p) => p.toJson()).toList());
+
+    // 先写临时文件并落盘，再把旧文件留一份 .bak，最后原子替换。
+    // 中途断电最多丢掉最后一次改动，不会出现半个 JSON。
+    final tmp = File('${file.path}.tmp');
+    await tmp.writeAsString(content, flush: true);
+    if (await file.exists()) {
+      await file.copy('${file.path}.bak');
+    }
+    await tmp.rename(file.path);
+
+    // 数据一改，提醒的排期就要跟着变（当天已打卡的会被跳过）
+    unawaited(NotificationService.syncAll(projects));
   }
 
   static Future<String> exportProject(Project p) async {
@@ -112,21 +137,26 @@ class Storage {
   }
 
   static const presetIcons = [
-    'morning.png',
-    'reading.png',
-    'fitness.png',
-    'running.png',
-    'water.png',
-    'sleep.png',
-    'meditation.png',
-    'study.png',
-    'writing.png',
-    'drawing.png',
-    'diet.png',
-    'accounting.png',
-    'quit_smoking.png',
-    'piano.png',
-    'cooking.png',
-    'medicine.png',
+    'morning.webp',
+    'reading.webp',
+    'fitness.webp',
+    'running.webp',
+    'water.webp',
+    'sleep.webp',
+    'meditation.webp',
+    'study.webp',
+    'writing.webp',
+    'drawing.webp',
+    'diet.webp',
+    'accounting.webp',
+    'quit_smoking.webp',
+    'piano.webp',
+    'cooking.webp',
+    'medicine.webp',
   ];
+
+  /// 旧版本数据里存的是 .png 文件名，图标已统一压成 .webp，这里兼容一下
+  static String iconAsset(String name) => name.endsWith('.png')
+      ? '${name.substring(0, name.length - 4)}.webp'
+      : name;
 }
