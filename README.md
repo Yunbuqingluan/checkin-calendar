@@ -2,6 +2,17 @@
 
 纯本地的习惯打卡记录应用，Flutter 编写，数据只存在手机里，不联网、不注册。
 
+## 下载安装
+
+| 架构 | 适用设备 | 安装包 |
+| --- | --- | --- |
+| `arm64-v8a` | 绝大多数手机（2017 年以后） | **[⬇ 下载 APK](https://github.com/Yunbuqingluan/checkin-calendar/releases/latest/download/checkin-calendar-arm64-v8a.apk)** |
+| `armeabi-v7a` | 较老的 32 位手机 | [下载 APK](https://github.com/Yunbuqingluan/checkin-calendar/releases/latest/download/checkin-calendar-armeabi-v7a.apk) |
+| `x86_64` | 安卓模拟器 | [下载 APK](https://github.com/Yunbuqingluan/checkin-calendar/releases/latest/download/checkin-calendar-x86_64.apk) |
+
+上面的链接始终指向最新版本，想装旧版到 [Releases](https://github.com/Yunbuqingluan/checkin-calendar/releases) 页面挑。
+第一次安装时系统可能提示「未知来源」，在设置里给浏览器或文件管理器放行一次即可。
+
 - 包名：`com.yunluan.checkincalendar`
 - 版本：1.2.3+6
 - 平台：Android（主要目标）；Windows / Web 可编译但未适配
