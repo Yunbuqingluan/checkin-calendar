@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models.dart';
@@ -129,11 +130,61 @@ class Storage {
     final path = await dataFolderPath();
     final folder = Directory('$path/exports');
     if (!await folder.exists()) await folder.create(recursive: true);
-    final safeName = p.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-    final file = File(
-        '${folder.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.json');
+    final file = File('${folder.path}/${_exportFileName(p)}');
     await file.writeAsString(jsonEncode(p.toJson()));
     return file.path;
+  }
+
+  /// 导出的结果：位置描述 + 是否在文件管理器里能看到
+  static Future<ExportResult> exportProjectToPublic(Project p) async {
+    final bytes = Uint8List.fromList(utf8.encode(jsonEncode(p.toJson())));
+    final name = _exportFileName(p);
+
+    // Android：写进公共「下载/打卡日历导出/」，MediaStore 不需要权限
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        final where = await _filesChannel.invokeMethod<String>(
+          'saveToDownloads',
+          {'name': name, 'bytes': bytes},
+        );
+        if (where != null && where.isNotEmpty) {
+          return ExportResult(where, visible: true);
+        }
+      } catch (e) {
+        debugPrint('写入公共下载目录失败，回退到应用目录：$e');
+      }
+    }
+
+    // 桌面：写到系统下载目录
+    if (!kIsWeb && !Platform.isAndroid) {
+      try {
+        final downloads = await getDownloadsDirectory();
+        if (downloads != null) {
+          final dir = Directory('${downloads.path}/$_exportFolder');
+          await dir.create(recursive: true);
+          final file = File('${dir.path}/$name');
+          await file.writeAsBytes(bytes);
+          return ExportResult(file.path, visible: true);
+        }
+      } catch (e) {
+        debugPrint('写入下载目录失败，回退到应用目录：$e');
+      }
+    }
+
+    // 兜底：应用私有目录（老系统或权限被拒时）
+    final path = await exportProject(p);
+    return ExportResult(path, visible: false);
+  }
+
+  static const MethodChannel _filesChannel =
+      MethodChannel('com.yunluan.checkincalendar/files');
+
+  /// 公共导出目录名，Android 上是「下载/打卡日历导出」
+  static const String _exportFolder = '打卡日历导出';
+
+  static String _exportFileName(Project p) {
+    final safeName = p.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    return '${safeName}_${DateTime.now().millisecondsSinceEpoch}.json';
   }
 
   static const presetIcons = [
@@ -159,4 +210,15 @@ class Storage {
   static String iconAsset(String name) => name.endsWith('.png')
       ? '${name.substring(0, name.length - 4)}.webp'
       : name;
+}
+
+/// 导出结果
+class ExportResult {
+  const ExportResult(this.location, {required this.visible});
+
+  /// 给用户看的位置，例如「下载/打卡日历导出/晨间阅读_1712345.json」
+  final String location;
+
+  /// true 表示在文件管理器里能直接找到；false 表示落在应用私有目录
+  final bool visible;
 }

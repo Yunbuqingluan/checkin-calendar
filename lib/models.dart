@@ -122,6 +122,63 @@ class Project {
     return recordsOn(day).length >= dailyLimit;
   }
 
+  /// 累计打卡天数（同一天多次打卡只算一天）
+  int get checkedDayCount {
+    final days = <String>{};
+    for (final r in records) {
+      days.add('${r.time.year}-${r.time.month}-${r.time.day}');
+    }
+    return days.length;
+  }
+
+  /// 最近一次打卡时间，没打过卡返回 null
+  DateTime? get lastCheckInTime {
+    if (records.isEmpty) return null;
+    var last = records.first.time;
+    for (final r in records) {
+      if (r.time.isAfter(last)) last = r.time;
+    }
+    return last;
+  }
+
+  /// 当前连续打卡天数。
+  /// 今天还没打卡时从昨天开始数，所以「昨天打了、今天还没打」不会立刻清零；
+  /// 遇到「本该打卡却没打」的日子就中断，不需要打卡的日子跳过且不算断。
+  int currentStreak(DateTime today) {
+    final start = DateTime(createdAt.year, createdAt.month, createdAt.day);
+    var day = DateTime(today.year, today.month, today.day);
+    if (day.isBefore(start)) return 0;
+    if (isRequiredOn(day) && !isCheckedOn(day)) {
+      day = DateTime(day.year, day.month, day.day - 1);
+    }
+    var streak = 0;
+    while (!day.isBefore(start)) {
+      if (isRequiredOn(day)) {
+        if (!isCheckedOn(day)) break;
+        streak++;
+      }
+      day = DateTime(day.year, day.month, day.day - 1);
+    }
+    return streak;
+  }
+
+  /// [from]~[to] 之间的完成率：应有打卡的天数里有几天真的打了卡，返回 0~1
+  double completionRate(DateTime from, DateTime to) {
+    final start = DateTime(from.year, from.month, from.day);
+    final end = DateTime(to.year, to.month, to.day);
+    var required = 0;
+    var done = 0;
+    for (var i = 0;; i++) {
+      final day = DateTime(start.year, start.month, start.day + i);
+      if (day.isAfter(end)) break;
+      if (!isRequiredOn(day)) continue;
+      required++;
+      if (isCheckedOn(day)) done++;
+    }
+    if (required == 0) return 0;
+    return done / required;
+  }
+
   /// 根据 id 找指标
   Metric? findMetric(String id) {
     for (final m in metrics) {

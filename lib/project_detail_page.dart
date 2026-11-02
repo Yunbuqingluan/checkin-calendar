@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'compare_chart.dart';
 import 'models.dart';
 import 'storage.dart';
 
@@ -98,6 +99,16 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     };
     List<String> images = List.from(editRecord?.images ?? []);
     final now = DateTime.now();
+
+    // 这一天已经打满上限时，补打卡也不能再放行
+    if (editRecord == null && widget.project.reachedLimitOn(day)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${day.month}月${day.day}日已经达到打卡上限'),
+        ),
+      );
+      return;
+    }
 
     final ok = await showDialog<bool>(
       context: context,
@@ -236,8 +247,9 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
         editRecord.images = images;
       });
     } else {
+      // 补打卡只记日期（当天 00:00），不把「现在几点」写进历史记录
       final actualTime = isMakeUp
-          ? DateTime(day.year, day.month, day.day, now.hour, now.minute)
+          ? DateTime(day.year, day.month, day.day)
           : await _handleCrossDay(day);
 
       final record = CheckInRecord(
@@ -255,6 +267,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
 
   Future<void> _pickDateAndCheckIn() async {
     DateTime pickMonth = DateTime(_month.year, _month.month);
+    final now = DateTime.now();
+    final today0 = DateTime(now.year, now.month, now.day);
     final picked = await showDialog<DateTime>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -296,11 +310,34 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                   final dayNum = i - (firstWeekday - 1) + 1;
                   final day =
                       DateTime(pickMonth.year, pickMonth.month, dayNum);
+                  final isFuture = day.isAfter(today0);
+                  final isFull = widget.project.reachedLimitOn(day);
+                  final disabled = isFuture || isFull;
                   return InkWell(
-                    onTap: () => Navigator.pop(ctx, day),
+                    onTap: disabled
+                        ? () => ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(
+                                content: Text(isFuture ? '还没到那一天' : '这天已经达到打卡上限'),
+                                duration: const Duration(seconds: 1),
+                              ),
+                            )
+                        : () => Navigator.pop(ctx, day),
                     child: Container(
                       margin: const EdgeInsets.all(2),
-                      child: Center(child: Text('$dayNum')),
+                      decoration: BoxDecoration(
+                        color: isFull
+                            ? Colors.grey.withValues(alpha: 0.15)
+                            : null,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '$dayNum',
+                          style: TextStyle(
+                            color: disabled ? Colors.grey : null,
+                          ),
+                        ),
+                      ),
                     ),
                   );
                 },
@@ -366,6 +403,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     int metricIndex = 0;
     int timeRange = 0;
     int chartType = 0;
+    bool compare = false;
 
     showDialog(
       context: context,
@@ -383,6 +421,30 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
           }
 
           final points = widget.project.metricPoints(metric.id, cutoff);
+
+          // 对比模式：把每个指标画成一条独立的线（各自归一化，只看趋势）
+          final palette = <Color>[
+            Theme.of(ctx).colorScheme.primary,
+            Colors.orange,
+            Colors.purple,
+            Colors.green,
+            Colors.redAccent,
+            Colors.brown,
+          ];
+          final series = <CompareSeries>[];
+          if (compare) {
+            for (var i = 0; i < widget.project.metrics.length; i++) {
+              final m = widget.project.metrics[i];
+              final pts = widget.project.metricPoints(m.id, cutoff);
+              if (pts.isEmpty) continue;
+              series.add(CompareSeries(
+                name: m.name,
+                unit: m.unit,
+                color: palette[i % palette.length],
+                points: pts,
+              ));
+            }
+          }
 
           return AlertDialog(
             title: Text('${metric.name} 统计'),
@@ -421,45 +483,109 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                   Wrap(
                     spacing: 6,
                     children: [
-                      ChoiceChip(
-                        label: const Text('折线'),
-                        selected: chartType == 0,
-                        onSelected: (_) => setSt(() => chartType = 0),
-                      ),
-                      ChoiceChip(
-                        label: const Text('柱状'),
-                        selected: chartType == 1,
-                        onSelected: (_) => setSt(() => chartType = 1),
-                      ),
+                      if (widget.project.metrics.length > 1)
+                        FilterChip(
+                          label: const Text('多指标对比'),
+                          selected: compare,
+                          onSelected: (v) => setSt(() => compare = v),
+                        ),
+                      if (!compare) ...[
+                        ChoiceChip(
+                          label: const Text('折线'),
+                          selected: chartType == 0,
+                          onSelected: (_) => setSt(() => chartType = 0),
+                        ),
+                        ChoiceChip(
+                          label: const Text('柱状'),
+                          selected: chartType == 1,
+                          onSelected: (_) => setSt(() => chartType = 1),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 12),
                   Expanded(
-                    child: points.isEmpty
-                        ? const Center(child: Text('这个时间段还没有数据'))
-                        : LayoutBuilder(
-                            builder: (context, constraints) {
-                              return CustomPaint(
-                                size: Size(constraints.maxWidth,
-                                    constraints.maxHeight),
-                                painter: chartType == 0
-                                    ? _LineChartPainter(
-                                        points: points,
-                                        unit: metric.unit,
+                    child: compare
+                        ? (series.isEmpty
+                            ? const Center(child: Text('这个时间段还没有数据'))
+                            : Column(
+                                children: [
+                                  Wrap(
+                                    spacing: 14,
+                                    runSpacing: 4,
+                                    alignment: WrapAlignment.center,
+                                    children: [
+                                      for (final s in series)
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              width: 10,
+                                              height: 10,
+                                              decoration: BoxDecoration(
+                                                color: s.color,
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              s.unit.isEmpty
+                                                  ? s.name
+                                                  : '${s.name}(${s.unit})',
+                                              style: const TextStyle(
+                                                  fontSize: 12),
+                                            ),
+                                          ],
+                                        ),
+                                    ],
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Text(
+                                      '各指标按自身范围归一化，只比较趋势',
+                                      style: TextStyle(
+                                        fontSize: 11,
                                         color: Theme.of(ctx)
                                             .colorScheme
-                                            .primary,
-                                      )
-                                    : _BarChartPainter(
-                                        points: points,
-                                        unit: metric.unit,
-                                        color: Theme.of(ctx)
-                                            .colorScheme
-                                            .primary,
+                                            .outline,
                                       ),
-                              );
-                            },
-                          ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: CustomPaint(
+                                      size: Size.infinite,
+                                      painter: CompareChartPainter(
+                                        series: series,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ))
+                        : points.isEmpty
+                            ? const Center(child: Text('这个时间段还没有数据'))
+                            : LayoutBuilder(
+                                builder: (context, constraints) {
+                                  return CustomPaint(
+                                    size: Size(constraints.maxWidth,
+                                        constraints.maxHeight),
+                                    painter: chartType == 0
+                                        ? _LineChartPainter(
+                                            points: points,
+                                            unit: metric.unit,
+                                            color: Theme.of(ctx)
+                                                .colorScheme
+                                                .primary,
+                                          )
+                                        : _BarChartPainter(
+                                            points: points,
+                                            unit: metric.unit,
+                                            color: Theme.of(ctx)
+                                                .colorScheme
+                                                .primary,
+                                          ),
+                                  );
+                                },
+                              ),
                   ),
                 ],
               ),

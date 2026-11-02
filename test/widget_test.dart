@@ -28,7 +28,8 @@ void main() {
     // 所以这里只能同步建目录
     tempDir = Directory.systemTemp.createTempSync('calendar_app_test');
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
-    SharedPreferences.setMockInitialValues({});
+    // 首页默认会弹首次引导，测试里直接标记为已看过
+    SharedPreferences.setMockInitialValues({'onboarding_done_v1': true});
   });
 
   tearDown(() {

@@ -6,13 +6,27 @@ import 'models.dart';
 import 'storage.dart';
 import 'notification_service.dart';
 import 'project_detail_page.dart';
+import 'coach_guide.dart';
+import 'overview_page.dart';
+import 'today_page.dart';
 import 'main.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, this.initialProjects});
+  const HomePage({
+    super.key,
+    this.initialProjects,
+    this.enableOnboarding = true,
+    this.alwaysShowGuide = false,
+  });
 
-  /// 预览 / 测试用：直接给定初始项目，跳过本地读取
+  /// 直接指定项目列表并跳过本地读取，预览和测试里用
   final List<Project>? initialProjects;
+
+  /// 是否显示首次进入的引导
+  final bool enableOnboarding;
+
+  /// 忽略「已看过」标记，强制显示引导
+  final bool alwaysShowGuide;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -25,10 +39,27 @@ class _HomePageState extends State<HomePage> {
   bool _sorting = false;
   final TextEditingController _searchCtrl = TextEditingController();
 
+  // 引导要指的位置
+  final GlobalKey _addKey = GlobalKey();
+  final GlobalKey _searchKey = GlobalKey();
+  final GlobalKey _menuKey = GlobalKey();
+  final GlobalKey _firstCardKey = GlobalKey();
+
+  int _coachStep = 0;
+  OverlayEntry? _coachEntry;
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _coachEntry?.remove();
+    _coachEntry = null;
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -37,6 +68,81 @@ class _HomePageState extends State<HomePage> {
       _projects = list;
       _loading = false;
     });
+    if (!widget.enableOnboarding) {
+      if (widget.alwaysShowGuide) _startCoachGuide();
+      return;
+    }
+    if (widget.alwaysShowGuide || await OnboardingFlag.shouldShow()) {
+      _startCoachGuide();
+    }
+  }
+
+  /// 从第一步开始，逐条箭头指向界面上的按钮
+  void _startCoachGuide() {
+    if (!mounted) return;
+    // 等界面画完，按钮的位置才量得准
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _coachStep = 0;
+      _showCoachEntry();
+    });
+  }
+
+  void _showCoachEntry() {
+    _coachEntry?.remove();
+    final entry = OverlayEntry(builder: (_) => _buildCoachGuide());
+    _coachEntry = entry;
+    Overlay.of(context, rootOverlay: true).insert(entry);
+  }
+
+  Widget _buildCoachGuide() {
+    final steps = _coachSteps();
+    return CoachGuide(
+      steps: steps,
+      index: _coachStep.clamp(0, steps.length - 1),
+      onNext: _nextCoachStep,
+      onSkip: _finishCoachGuide,
+    );
+  }
+
+  void _nextCoachStep() {
+    final total = _coachSteps().length;
+    if (_coachStep + 1 >= total) {
+      _finishCoachGuide();
+    } else {
+      setState(() => _coachStep++);
+      _coachEntry?.markNeedsBuild();
+    }
+  }
+
+  Future<void> _finishCoachGuide() async {
+    _coachEntry?.remove();
+    _coachEntry = null;
+    await OnboardingFlag.markDone();
+  }
+
+  List<CoachStep> _coachSteps() {
+    final steps = <CoachStep>[
+      CoachStep(
+        text: '点这里新建一个项目：给它起名字、选图标，设定多久打卡一次。',
+        targetKey: _addKey,
+      ),
+      CoachStep(
+        text: '项目多了用搜索，输入两个字就能筛出想找的那个。',
+        targetKey: _searchKey,
+      ),
+      CoachStep(
+        text: '左边的菜单里有「今日待打卡」「统计总览」和设置，随时能回来查看。',
+        targetKey: _menuKey,
+      ),
+    ];
+    if (_projects.isNotEmpty) {
+      steps.add(CoachStep(
+        text: '点卡片进入详情：打卡、看日历和统计都在里面。',
+        targetKey: _firstCardKey,
+      ));
+    }
+    return steps;
   }
 
   Future<void> _save() async => await Storage.saveProjects(_projects);
@@ -122,8 +228,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _exportProject(Project p) async {
-    final path = await Storage.exportProject(p);
-    _showSnack('已导出到：$path');
+    final result = await Storage.exportProjectToPublic(p);
+    _showSnack(
+      result.visible ? '已导出到 ${result.location}' : '已导出（应用目录）：${result.location}',
+    );
   }
 
   Future<void> _showProjectEditor({Project? project}) async {
@@ -636,7 +744,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _openSettings() async {
-    final path = await Storage.dataFolderPath();
+    // 先把目录读取挂上，再立刻弹窗：不让磁盘 IO 挡住界面
+    final pathFuture = Storage.dataFolderPath();
     if (!mounted) return;
     showDialog(
       context: context,
@@ -758,12 +867,35 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ),
                 const SizedBox(height: 4),
-                SelectableText(path, style: const TextStyle(fontSize: 12)),
-                const SizedBox(height: 20),
+                FutureBuilder<String>(
+                  future: pathFuture,
+                  builder: (ctx, snapshot) {
+                    final text = snapshot.connectionState != ConnectionState.done
+                        ? '读取中…'
+                        : (snapshot.data ?? '读取失败');
+                    return SelectableText(
+                      text,
+                      style: const TextStyle(fontSize: 12),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _startCoachGuide();
+                    },
+                    icon: const Icon(Icons.tips_and_updates, size: 18),
+                    label: const Text('重新查看新手引导'),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 const Text('关于',
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                const Text('打卡日历 v1.0\n本地打卡记录应用',
+                const Text('打卡日历 v1.2.0\n本地打卡记录应用',
                     style: TextStyle(fontSize: 12)),
               ],
             ),
@@ -928,6 +1060,117 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildDrawer(BuildContext context) {
+    final today = DateTime.now();
+    final today0 = DateTime(today.year, today.month, today.day);
+    final pending = _projects
+        .where((p) => p.isRequiredOn(today0) && !p.reachedLimitOn(today0))
+        .length;
+    final doneToday = _projects
+        .where((p) => p.isRequiredOn(today0) && p.reachedLimitOn(today0))
+        .length;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Drawer(
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.event_available, color: scheme.primary),
+                      const SizedBox(width: 8),
+                      const Text(
+                        '打卡日历',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '${_projects.length} 个项目 · 今日待打卡 $pending 项',
+                    style: TextStyle(fontSize: 13, color: scheme.outline),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '今日已完成 $doneToday 项',
+                    style: TextStyle(fontSize: 13, color: scheme.outline),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.checklist),
+              title: const Text('全部项目'),
+              selected: true,
+              onTap: () {
+                Navigator.pop(context);
+                setState(() {
+                  _sorting = false;
+                  _searching = false;
+                  _searchCtrl.clear();
+                });
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.today),
+              title: const Text('今日待打卡'),
+              trailing: pending == 0 ? null : Badge(label: Text('$pending')),
+              onTap: () async {
+                Navigator.pop(context);
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => TodayPage(projects: _projects),
+                  ),
+                );
+                if (mounted) setState(() {});
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.insights),
+              title: const Text('统计总览'),
+              onTap: () async {
+                Navigator.pop(context);
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => OverviewPage(projects: _projects),
+                  ),
+                );
+                if (mounted) setState(() {});
+              },
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text('设置'),
+              onTap: () {
+                Navigator.pop(context);
+                _openSettings();
+              },
+            ),
+            const Spacer(),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                '所有数据只保存在本机',
+                style: TextStyle(fontSize: 12, color: scheme.outline),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = _projects.where((p) {
@@ -935,7 +1178,7 @@ class _HomePageState extends State<HomePage> {
       return p.name.contains(_searchCtrl.text);
     }).toList();
 
-    return Scaffold(
+    final scaffold = Scaffold(
       appBar: AppBar(
         title: _searching
             ? TextField(
@@ -965,6 +1208,7 @@ class _HomePageState extends State<HomePage> {
                   )
                 : Builder(
                     builder: (ctx) => IconButton(
+                      key: _menuKey,
                       icon: const Icon(Icons.menu),
                       onPressed: () => Scaffold.of(ctx).openDrawer(),
                     ),
@@ -982,46 +1226,20 @@ class _HomePageState extends State<HomePage> {
           else ...[
             if (!_searching)
               IconButton(
+                key: _searchKey,
                 icon: const Icon(Icons.search),
                 onPressed: () => setState(() => _searching = true),
               ),
             if (!_searching)
               IconButton(
+                key: _addKey,
                 icon: const Icon(Icons.add_circle, size: 30),
                 onPressed: _openNewProjectSheet,
               ),
           ],
         ],
       ),
-      drawer: _sorting
-          ? null
-          : Drawer(
-              child: Column(
-                children: [
-                  const SizedBox(height: 40),
-                  ListTile(
-                    leading: const Icon(Icons.settings),
-                    title: const Text('设置'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _openSettings();
-                    },
-                  ),
-                  const Spacer(),
-                  const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text(
-                      '我的打卡',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+      drawer: _sorting ? null : _buildDrawer(context),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : filtered.isEmpty
@@ -1059,9 +1277,14 @@ class _HomePageState extends State<HomePage> {
                       ),
                       itemCount: filtered.length,
                       itemBuilder: (ctx, i) {
-                        return _buildCard(filtered[i]);
+                        return KeyedSubtree(
+                          key: i == 0 ? _firstCardKey : null,
+                          child: _buildCard(filtered[i]),
+                        );
                       },
                     ),
     );
+
+    return scaffold;
   }
 }

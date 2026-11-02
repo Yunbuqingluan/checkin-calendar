@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 
 import 'home_page.dart';
 import 'models.dart';
+import 'overview_page.dart';
 import 'project_detail_page.dart';
+import 'today_page.dart';
 
-/// 只用于 Web / 桌面预览截图：用内存里的示例数据渲染页面，
-/// 不读本地文件，也不参与正式打包（APK 入口是 main.dart）。
+/// 页面预览入口：在浏览器 / 桌面上按 `?page=` 渲染指定页面，方便调样式和截图。
+/// 正式包走 `lib/main.dart`。
 ///
-/// 用法：`?page=detail` 看项目详情（日历），`?page=empty` 看空状态。
+/// 用法：`?page=detail` 详情页，`?page=overview` 统计总览，
+/// `?page=today` 今日待打卡，`?page=guide` 主界面箭头引导，`?page=empty` 空状态。
 void main() {
   runApp(const _PreviewApp());
 }
@@ -22,10 +25,20 @@ class _PreviewApp extends StatelessWidget {
     final Widget home;
     if (page == 'detail') {
       home = ProjectDetailPage(project: projects.first);
+    } else if (page == 'overview') {
+      home = OverviewPage(projects: projects);
+    } else if (page == 'today') {
+      home = TodayPage(projects: projects);
+    } else if (page == 'guide') {
+      home = HomePage(
+        initialProjects: projects,
+        enableOnboarding: false,
+        alwaysShowGuide: true,
+      );
     } else if (page == 'empty') {
-      home = const HomePage(initialProjects: []);
+      home = const HomePage(initialProjects: [], enableOnboarding: false);
     } else {
-      home = HomePage(initialProjects: projects);
+      home = HomePage(initialProjects: projects, enableOnboarding: false);
     }
 
     return MaterialApp(

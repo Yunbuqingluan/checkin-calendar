@@ -99,4 +99,75 @@ void main() {
 
     expect(p.records, hasLength(1));
   });
+
+  testWidgets('补打卡选到已打满上限的日子会被拦下', (tester) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final p = Project(
+      id: 'limit',
+      name: '喝水',
+      createdAt: today.subtract(const Duration(days: 3)),
+      dailyLimit: 1,
+    );
+    p.records.add(CheckInRecord(
+      id: 'r1',
+      time: today.add(const Duration(hours: 9)),
+    ));
+
+    await tester.pumpWidget(_wrap(p));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('补打卡'));
+    await tester.pumpAndSettle();
+
+    final dayCell = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.text('${today.day}'),
+    );
+    expect(dayCell, findsOneWidget);
+
+    await tester.tap(dayCell);
+    await tester.pump();
+
+    // 没有打开打卡对话框，而是提示这天已经满了
+    expect(find.text('备注（可选）'), findsNothing);
+    expect(find.textContaining('已经达到打卡上限'), findsOneWidget);
+  });
+
+  testWidgets('统计弹窗可以切到多指标对比', (tester) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final p = Project(
+      id: 'cmp',
+      name: '体重',
+      createdAt: today.subtract(const Duration(days: 5)),
+      metrics: [
+        Metric(id: 'm-w', name: '体重', unit: 'kg'),
+        Metric(id: 'm-f', name: '体脂', unit: '%'),
+      ],
+    );
+    for (var i = 4; i >= 0; i--) {
+      p.records.add(CheckInRecord(
+        id: 'c$i',
+        time: DateTime(today.year, today.month, today.day - i, 8),
+        metricValues: {'m-w': 70 - i.toDouble(), 'm-f': 20 + i.toDouble()},
+      ));
+    }
+
+    await tester.pumpWidget(_wrap(p));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('统计'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('多指标对比'), findsOneWidget);
+    await tester.tap(find.text('多指标对比'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('归一化'), findsOneWidget);
+    expect(find.text('体重(kg)'), findsOneWidget);
+    expect(find.text('体脂(%)'), findsOneWidget);
+    // 对比模式下不显示单指标的图表类型
+    expect(find.text('柱状'), findsNothing);
+  });
 }
