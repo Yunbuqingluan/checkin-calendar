@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_theme.dart';
 import 'home_page.dart';
 import 'models.dart';
 import 'overview_page.dart';
@@ -11,9 +12,14 @@ import 'today_page.dart';
 ///
 /// 用法：`?page=detail` 详情页，`?page=overview` 统计总览，
 /// `?page=today` 今日待打卡，`?page=guide` 主界面箭头引导，`?page=empty` 空状态。
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const _PreviewApp());
 }
+
+/// 预览构建里注入的中文字体家族名（build/web 的 FontManifest 里补的），
+/// 浏览器没有中文字形，不指定就全是空白。
+const _previewFontFamily = 'PreviewCJK';
 
 class _PreviewApp extends StatelessWidget {
   const _PreviewApp();
@@ -44,15 +50,15 @@ class _PreviewApp extends StatelessWidget {
     return MaterialApp(
       title: '打卡日历 · 预览',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
-        useMaterial3: true,
-        cardTheme: const CardThemeData(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(20)),
-          ),
-          elevation: 2,
-        ),
+      theme: buildAppTheme(
+        seed: AppColors.pink,
+        brightness: Brightness.light,
+        fontFamily: _previewFontFamily,
+      ),
+      darkTheme: buildAppTheme(
+        seed: AppColors.pink,
+        brightness: Brightness.dark,
+        fontFamily: _previewFontFamily,
       ),
       home: home,
     );

@@ -55,3 +55,6 @@ android/.gradle/
 
 # 打包产物
 /dist/
+
+# 本地预览用的中文字体，不进仓库
+web/preview-font.ttf

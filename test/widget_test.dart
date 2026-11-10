@@ -71,15 +71,15 @@ void main() {
     await tester.pumpWidget(const MyApp());
     await settle(tester);
 
-    expect(find.text('还没有项目，点右上角 + 新建'), findsOneWidget);
-    expect(find.byIcon(Icons.add_circle), findsOneWidget);
+    expect(find.text('还没有打卡项目'), findsOneWidget);
+    expect(find.byIcon(Icons.add_rounded), findsOneWidget);
   });
 
   testWidgets('新建项目后首页出现卡片，并写入本地文件', (tester) async {
     await tester.pumpWidget(const MyApp());
     await settle(tester);
 
-    await tester.tap(find.byIcon(Icons.add_circle));
+    await tester.tap(find.byIcon(Icons.add_rounded));
     await tester.pumpAndSettle();
     await tester.tap(find.text('新建项目'));
     await tester.pumpAndSettle();
@@ -90,7 +90,7 @@ void main() {
 
     // 卡片标题是描边文字，会渲染成两个 Text
     expect(find.text('晨间阅读'), findsWidgets);
-    expect(find.text('还没有项目，点右上角 + 新建'), findsNothing);
+    expect(find.text('还没有打卡项目'), findsNothing);
 
     final saved = File('${tempDir.path}/checkin_app/projects.json');
     // 落盘是真实 IO，等它真正写完（测试里只能靠 runAsync 让出真实时间）
@@ -104,12 +104,11 @@ void main() {
     expect(saved.readAsStringSync(), contains('晨间阅读'));
   });
 
-  testWidgets('搜索能过滤项目', (tester) async {
-    await tester.pumpWidget(const MyApp());
+  testWidgets('搜索能过滤项目', (tester) async {    await tester.pumpWidget(const MyApp());
     await settle(tester);
 
     for (final name in ['晨间阅读', '夜跑']) {
-      await tester.tap(find.byIcon(Icons.add_circle));
+      await tester.tap(find.byIcon(Icons.add_rounded));
       await tester.pumpAndSettle();
       await tester.tap(find.text('新建项目'));
       await tester.pumpAndSettle();
@@ -120,12 +119,62 @@ void main() {
 
     expect(find.text('夜跑'), findsWidgets);
 
-    await tester.tap(find.byIcon(Icons.search));
+    await tester.tap(find.byIcon(Icons.search_rounded));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '晨间');
     await tester.pumpAndSettle();
 
     expect(find.text('晨间阅读'), findsWidgets);
     expect(find.text('夜跑'), findsNothing);
+  });
+
+  testWidgets('没填名称点创建时留在弹窗里提示', (tester) async {
+    await tester.pumpWidget(const MyApp());
+    await settle(tester);
+
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('新建项目'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('创建'));
+    await tester.pumpAndSettle();
+
+    // 弹窗没关，名称输入框下面给出提示
+    expect(find.text('先给项目起个名字'), findsOneWidget);
+    expect(find.text('项目名称'), findsOneWidget);
+
+    // 补上名称就能正常创建
+    await tester.enterText(find.byType(TextField).first, '晨间阅读');
+    await tester.pumpAndSettle();
+    expect(find.text('先给项目起个名字'), findsNothing);
+    await tester.tap(find.text('创建'));
+    await settle(tester);
+    expect(find.text('晨间阅读'), findsWidgets);
+  });
+
+  testWidgets('手机尺寸下新建项目弹窗不溢出，能滚动到提醒设置', (tester) async {
+    tester.view.physicalSize = const Size(1170, 2532); // 390x844 @3x
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(const MyApp());
+    await settle(tester);
+
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('新建项目'));
+    await tester.pumpAndSettle();
+
+    // 弹窗里的关键内容都在
+    expect(find.text('项目名称'), findsOneWidget);
+    expect(find.text('打卡频率'), findsOneWidget);
+    expect(find.text('每日打卡次数'), findsOneWidget);
+
+    // 滚到底能看到提醒设置和创建按钮
+    await tester.drag(find.text('每日打卡次数'), const Offset(0, -400));
+    await tester.pumpAndSettle();
+    expect(find.text('提醒'), findsOneWidget);
+    expect(find.text('创建'), findsOneWidget);
   });
 }

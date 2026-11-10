@@ -35,6 +35,17 @@ class NotificationService {
   static bool get _supported =>
       !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
+  /// 测试用：绕开平台判断
+  @visibleForTesting
+  static bool? debugSupported;
+
+  /// 测试用：直接给出「有没有通知权限」
+  @visibleForTesting
+  static Future<bool> Function()? debugHasPermission;
+
+  /// 这个平台能不能发通知（桌面和 Web 上直接跳过相关检查）
+  static bool get supported => debugSupported ?? _supported;
+
   /// 初始化插件与时区数据，重复调用是安全的。
   static Future<void> init() async {
     if (!_supported || _ready) return;
@@ -103,7 +114,9 @@ class NotificationService {
 
   /// 当前是否已有通知权限。
   static Future<bool> hasPermission() async {
-    if (!_supported) return false;
+    final probe = debugHasPermission;
+    if (probe != null) return probe();
+    if (!supported) return false;
     await init();
     if (!_ready) return false;
     try {

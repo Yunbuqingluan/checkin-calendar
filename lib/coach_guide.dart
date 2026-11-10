@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'app_theme.dart';
 
 /// 是否已经看过新手引导（键名沿用旧版，老用户不会被重复打扰）
 class OnboardingFlag {
@@ -153,50 +154,75 @@ class _CoachGuideState extends State<CoachGuide>
     final theme = Theme.of(context);
     final step = widget.steps[widget.index];
 
-    return Material(
-      color: theme.colorScheme.surface,
-      elevation: 10,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.touch_app_outlined,
-                    size: 18, color: theme.colorScheme.primary),
-                const SizedBox(width: 6),
-                Text(
-                  '${widget.index + 1}/${widget.steps.length}',
-                  style: theme.textTheme.labelMedium
-                      ?.copyWith(color: theme.colorScheme.primary),
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.pink.withValues(alpha: 0.28)),
+        boxShadow: AppShadow.soft(AppColors.grape, opacity: 0.30),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.pink, AppColors.grape],
+                  ),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              step.text,
-              style: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: widget.onSkip,
-                  child: const Text('跳过'),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.touch_app_rounded,
+                      size: 13,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${widget.index + 1}/${widget.steps.length}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 4),
-                FilledButton(
-                  onPressed: widget.onNext,
-                  child: Text(isLast ? '开始使用' : '下一步'),
-                ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            step.text,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              height: 1.5,
+              fontWeight: FontWeight.w600,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: widget.onSkip,
+                child: const Text('跳过'),
+              ),
+              const SizedBox(width: 4),
+              FilledButton(
+                onPressed: widget.onNext,
+                child: Text(isLast ? '开始使用' : '下一步'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -49,16 +49,23 @@ void main() {
     // 第一步指向右上角「+」
     expect(find.byType(CoachGuide), findsOneWidget);
     expect(find.textContaining('点这里新建一个项目'), findsOneWidget);
-    expect(find.text('1/3'), findsOneWidget);
+    expect(find.text('1/4'), findsOneWidget);
 
     await tester.tap(find.text('下一步'));
     await _settle(tester);
     expect(find.textContaining('项目多了用搜索'), findsOneWidget);
-    expect(find.text('2/3'), findsOneWidget);
+    expect(find.text('2/4'), findsOneWidget);
 
     await tester.tap(find.text('下一步'));
     await _settle(tester);
+    // 菜单这一步顺便说清楚批量导出和导入
     expect(find.textContaining('左边的菜单'), findsOneWidget);
+    expect(find.textContaining('批量导出'), findsOneWidget);
+    expect(find.text('3/4'), findsOneWidget);
+
+    await tester.tap(find.text('下一步'));
+    await _settle(tester);
+    expect(find.textContaining('导出位置'), findsOneWidget);
     expect(find.text('开始使用'), findsOneWidget);
 
     await tester.tap(find.text('开始使用'));
@@ -104,7 +111,7 @@ void main() {
     );
     await _settle(tester);
 
-    expect(find.text('1/4'), findsOneWidget);
+    expect(find.text('1/5'), findsOneWidget);
 
     for (var i = 0; i < 3; i++) {
       await tester.tap(find.text('下一步'));
@@ -112,7 +119,12 @@ void main() {
     }
 
     expect(find.textContaining('点卡片进入详情'), findsOneWidget);
-    expect(find.text('4/4'), findsOneWidget);
+    expect(find.textContaining('长按卡片'), findsOneWidget);
+    expect(find.text('4/5'), findsOneWidget);
+
+    await tester.tap(find.text('下一步'));
+    await _settle(tester);
+    expect(find.text('5/5'), findsOneWidget);
 
     await tester.tap(find.text('开始使用'));
     await _settle(tester);
@@ -138,7 +150,7 @@ void main() {
     expect(find.byType(CoachGuide), findsNothing);
 
     // 打开侧边栏 → 设置 → 重新查看新手引导
-    await tester.tap(find.byIcon(Icons.menu));
+    await tester.tap(find.byIcon(Icons.menu_rounded));
     await _settle(tester);
     await tester.tap(find.text('设置'));
     await _settle(tester);

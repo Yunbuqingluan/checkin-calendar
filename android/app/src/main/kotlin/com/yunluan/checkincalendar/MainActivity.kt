@@ -21,12 +21,13 @@ class MainActivity : FlutterActivity() {
                     "saveToDownloads" -> {
                         val name = call.argument<String>("name")
                         val bytes = call.argument<ByteArray>("bytes")
+                        val mime = call.argument<String>("mime") ?: "application/octet-stream"
                         if (name == null || bytes == null) {
                             result.error("bad_args", "name/bytes 不能为空", null)
                             return@setMethodCallHandler
                         }
                         try {
-                            result.success(saveToDownloads(name, bytes))
+                            result.success(saveToDownloads(name, bytes, mime))
                         } catch (e: Exception) {
                             result.error("save_failed", e.message ?: "写入失败", null)
                         }
@@ -41,13 +42,13 @@ class MainActivity : FlutterActivity() {
      * Android 10+ 走 MediaStore，不需要额外权限；
      * 更低版本写公共下载目录，失败时由 Dart 侧回退到应用目录。
      */
-    private fun saveToDownloads(name: String, bytes: ByteArray): String {
+    private fun saveToDownloads(name: String, bytes: ByteArray, mime: String): String {
         val folder = "打卡日历导出"
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, name)
-                put(MediaStore.Downloads.MIME_TYPE, "application/json")
+                put(MediaStore.Downloads.MIME_TYPE, mime)
                 put(
                     MediaStore.Downloads.RELATIVE_PATH,
                     "${Environment.DIRECTORY_DOWNLOADS}/$folder"
@@ -78,7 +79,7 @@ class MainActivity : FlutterActivity() {
         MediaScannerConnection.scanFile(
             this,
             arrayOf(file.absolutePath),
-            arrayOf("application/json"),
+            arrayOf(mime),
             null
         )
         return "下载/$folder/$name"

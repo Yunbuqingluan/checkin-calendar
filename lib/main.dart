@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_theme.dart';
 import 'home_page.dart';
 import 'notification_service.dart';
 
@@ -17,48 +18,23 @@ class MyApp extends StatefulWidget {
 }
 
 class MyAppState extends State<MyApp> {
+  /// 只保留深色 / 浅色 / 跟随系统三种外观
   static final ValueNotifier<ThemeMode> themeMode =
       ValueNotifier(ThemeMode.system);
-  static final ValueNotifier<Color> seedColor = ValueNotifier(Colors.teal);
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeMode,
       builder: (context, mode, _) {
-        return ValueListenableBuilder<Color>(
-          valueListenable: seedColor,
-          builder: (context, color, _) {
-            return MaterialApp(
-              title: '打卡日历',
-              debugShowCheckedModeBanner: false,
-              themeMode: mode,
-              theme: ThemeData(
-                colorScheme: ColorScheme.fromSeed(seedColor: color),
-                useMaterial3: true,
-                cardTheme: const CardThemeData(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(20)),
-                  ),
-                  elevation: 2,
-                ),
-              ),
-              darkTheme: ThemeData(
-                colorScheme: ColorScheme.fromSeed(
-                  seedColor: color,
-                  brightness: Brightness.dark,
-                ),
-                useMaterial3: true,
-                cardTheme: const CardThemeData(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(20)),
-                  ),
-                  elevation: 2,
-                ),
-              ),
-              home: const HomePage(),
-            );
-          },
+        return MaterialApp(
+          title: '打卡日历',
+          debugShowCheckedModeBanner: false,
+          themeMode: mode,
+          theme: buildAppTheme(seed: AppColors.pink, brightness: Brightness.light),
+          darkTheme:
+              buildAppTheme(seed: AppColors.pink, brightness: Brightness.dark),
+          home: const HomePage(),
         );
       },
     );
